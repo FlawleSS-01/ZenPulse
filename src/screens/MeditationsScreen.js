@@ -16,6 +16,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSubscription } from '../context/SubscriptionContext';
 import { MEDITATIONS } from '../data/meditations';
 
+function pluralDays(n) {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${n} день`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${n} дня`;
+  return `${n} дней`;
+}
+
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 24 * 2 - 14) / 2;
 
@@ -156,7 +164,7 @@ function MeditationCard({ item, index, isSubscribed, onLockedPress }) {
 }
 
 export default function MeditationsScreen({ navigation }) {
-  const { isSubscribed } = useSubscription();
+  const { isSubscribed, getTrialDaysLeft } = useSubscription();
   const insets = useSafeAreaInsets();
   const titleFade = useRef(new Animated.Value(0)).current;
   const titleSlide = useRef(new Animated.Value(-20)).current;
@@ -189,7 +197,7 @@ export default function MeditationsScreen({ navigation }) {
           />
         </View>
       </View>
-      {!isSubscribed && (
+      {!isSubscribed ? (
         <TouchableOpacity style={styles.premiumBtn} onPress={handleLockedPress}>
           <LinearGradient
             colors={['#FFD700', '#DAA520', '#B8860B']}
@@ -201,6 +209,18 @@ export default function MeditationsScreen({ navigation }) {
             <Text style={styles.premiumBtnText}>Premium</Text>
           </LinearGradient>
         </TouchableOpacity>
+      ) : (
+        <View style={styles.trialBadge}>
+          <LinearGradient
+            colors={['rgba(218,165,32,0.15)', 'rgba(218,165,32,0.05)']}
+            style={styles.trialBadgeGradient}
+          >
+            <Ionicons name="time-outline" size={13} color="#FFD700" />
+            <Text style={styles.trialBadgeText}>
+              {pluralDays(getTrialDaysLeft())}
+            </Text>
+          </LinearGradient>
+        </View>
       )}
     </Animated.View>
   );
@@ -319,6 +339,25 @@ const styles = StyleSheet.create({
     color: '#1A1145',
     fontSize: 13,
     fontWeight: '800',
+  },
+  trialBadge: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(218,165,32,0.2)',
+  },
+  trialBadgeGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    gap: 6,
+  },
+  trialBadgeText: {
+    color: '#FFD700',
+    fontSize: 13,
+    fontWeight: '700',
   },
   cardWrapper: {
     flex: 1,
