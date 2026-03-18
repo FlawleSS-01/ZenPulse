@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   Animated,
   Platform,
   ScrollView,
+  Dimensions,
+  Easing,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,31 +16,167 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSubscription } from '../context/SubscriptionContext';
 import { MOOD_AFFIRMATIONS } from '../data/meditations';
 
+const { width } = Dimensions.get('window');
+
 const MOODS = [
   { key: 'happy', emoji: '😊', label: 'Радостно', color: '#FBBF24', gradient: ['#FBBF24', '#F59E0B'] },
   { key: 'neutral', emoji: '😌', label: 'Спокойно', color: '#818CF8', gradient: ['#818CF8', '#6366F1'] },
   { key: 'sad', emoji: '😔', label: 'Грустно', color: '#A78BFA', gradient: ['#A78BFA', '#7C3AED'] },
 ];
 
-export default function AIMoodScreen({ navigation }) {
+function FloatingDot({ delay, x, color }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.parallel([
+          Animated.timing(opacity, { toValue: 0.6, duration: 600, useNativeDriver: true }),
+          Animated.timing(anim, { toValue: 1, duration: 2000, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        ]),
+        Animated.timing(opacity, { toValue: 0, duration: 400, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ]),
+    ).start();
+  }, []);
+
+  const ty = anim.interpolate({ inputRange: [0, 1], outputRange: [0, -60] });
+  const scale = anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.5, 1.2, 0.3] });
+
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        left: x,
+        bottom: 0,
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: color || '#FFD700',
+        opacity,
+        transform: [{ translateY: ty }, { scale }],
+      }}
+    />
+  );
+}
+
+function AnimatedMoodBtn({ mood, isSelected, isGenerating, onPress, pulseAnim, index }) {
+  const entryAnim = useRef(new Animated.Value(0)).current;
+  const pressScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.spring(entryAnim, {
+      toValue: 1,
+      delay: 200 + index * 150,
+      friction: 5,
+      tension: 80,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  const handlePressIn = () => {
+    Animated.spring(pressScale, { toValue: 0.9, friction: 5, useNativeDriver: true }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(pressScale, { toValue: 1, friction: 5, useNativeDriver: true }).start();
+    onPress();
+  };
+
+  return (
+    <Animated.View style={{ transform: [{ scale: entryAnim }] }}>
+      <TouchableOpacity
+        activeOpacity={1}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+      >
+        <Animated.View style={[
+          styles.moodBtn,
+          isSelected && styles.moodBtnSelected,
+          { transform: [{ scale: pressScale }] },
+        ]}>
+          {isSelected && (
+            <>
+              <LinearGradient
+                colors={[`${mood.color}30`, 'transparent']}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+              />
+              <LinearGradient
+                colors={mood.gradient}
+                style={styles.moodBtnGradientBorder}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              />
+            </>
+          )}
+          <Animated.Text
+            style={[
+              styles.moodEmoji,
+              isSelected && isGenerating && { transform: [{ scale: pulseAnim }] },
+            ]}
+          >
+            {mood.emoji}
+          </Animated.Text>
+          <Text style={[styles.moodLabel, isSelected && { color: mood.color, fontWeight: '700' }]}>
+            {mood.label}
+          </Text>
+        </Animated.View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+export default function AIMoodScreen() {
   const [selectedMood, setSelectedMood] = useState(null);
   const [affirmation, setAffirmation] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const { isSubscribed } = useSubscription();
   const insets = useSafeAreaInsets();
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const cardSlide = useRef(new Animated.Value(30)).current;
+  const headerFade = useRef(new Animated.Value(0)).current;
+  const headerSlide = useRef(new Animated.Value(30)).current;
+  const orbFloat = useRef(new Animated.Value(0)).current;
+
+  const generatingDots = useRef(
+    Array.from({ length: 6 }, (_, i) => ({
+      x: width * 0.15 + (width * 0.7 / 5) * i,
+      delay: i * 200,
+    })),
+  ).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(headerFade, { toValue: 1, duration: 800, useNativeDriver: true }),
+      Animated.timing(headerSlide, { toValue: 0, duration: 700, easing: Easing.out(Easing.back(1.3)), useNativeDriver: true }),
+    ]).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(orbFloat, { toValue: 1, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(orbFloat, { toValue: 0, duration: 3000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    ).start();
+  }, []);
+
+  const orbTY = orbFloat.interpolate({ inputRange: [0, 1], outputRange: [0, -15] });
 
   const generateAffirmation = (moodKey) => {
     setSelectedMood(moodKey);
     setIsGenerating(true);
     setAffirmation(null);
     fadeAnim.setValue(0);
+    cardSlide.setValue(30);
 
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.1, duration: 600, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.15, duration: 500, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
       ]),
     ).start();
 
@@ -49,18 +187,20 @@ export default function AIMoodScreen({ navigation }) {
       setIsGenerating(false);
       pulseAnim.setValue(1);
 
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }).start();
-    }, 1500);
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(cardSlide, { toValue: 0, duration: 500, easing: Easing.out(Easing.back(1.5)), useNativeDriver: true }),
+      ]).start();
+    }, 1800);
   };
 
   const getMoodData = () => MOODS.find((m) => m.key === selectedMood);
 
   return (
-    <LinearGradient colors={['#0F0A2E', '#1A1145', '#0F0A2E']} style={styles.container}>
+    <LinearGradient colors={['#0A0618', '#120D30', '#0F0A2E']} style={styles.container}>
+      <Animated.View style={[styles.bgOrb1, { transform: [{ translateY: orbTY }] }]} pointerEvents="none" />
+      <Animated.View style={[styles.bgOrb2, { transform: [{ translateY: Animated.multiply(orbTY, -1) }] }]} pointerEvents="none" />
+
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
@@ -68,83 +208,92 @@ export default function AIMoodScreen({ navigation }) {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
+        <Animated.View style={[styles.header, { opacity: headerFade, transform: [{ translateY: headerSlide }] }]}>
           <View style={styles.aiBadge}>
             <LinearGradient
-              colors={['#A78BFA', '#6366F1']}
+              colors={['#FFD700', '#DAA520', '#B8860B']}
               style={styles.aiBadgeGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
             >
-              <Ionicons name="sparkles" size={12} color="#FFF" />
+              <Ionicons name="sparkles" size={12} color="#1A1145" />
               <Text style={styles.aiBadgeText}>AI Настрой</Text>
             </LinearGradient>
           </View>
           <Text style={styles.title}>Настрой дня</Text>
+          <View style={styles.goldDivider}>
+            <LinearGradient
+              colors={['transparent', '#DAA520', '#FFD700', '#DAA520', 'transparent']}
+              style={styles.goldDividerLine}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            />
+          </View>
           <Text style={styles.subtitle}>
             Выберите своё настроение, и AI создаст{'\n'}персональную аффирмацию для вас
           </Text>
-        </View>
+        </Animated.View>
 
         <View style={styles.moodSelector}>
-          {MOODS.map((mood) => {
-            const isSelected = selectedMood === mood.key;
-            return (
-              <TouchableOpacity
-                key={mood.key}
-                style={[styles.moodBtn, isSelected && styles.moodBtnSelected]}
-                onPress={() => generateAffirmation(mood.key)}
-                activeOpacity={0.7}
-              >
-                {isSelected && (
-                  <LinearGradient
-                    colors={mood.gradient}
-                    style={styles.moodBtnGradientBorder}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  />
-                )}
-                <Animated.Text
-                  style={[
-                    styles.moodEmoji,
-                    isSelected && isGenerating && { transform: [{ scale: pulseAnim }] },
-                  ]}
-                >
-                  {mood.emoji}
-                </Animated.Text>
-                <Text style={[styles.moodLabel, isSelected && { color: mood.color }]}>
-                  {mood.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+          {MOODS.map((mood, index) => (
+            <AnimatedMoodBtn
+              key={mood.key}
+              mood={mood}
+              index={index}
+              isSelected={selectedMood === mood.key}
+              isGenerating={isGenerating}
+              pulseAnim={pulseAnim}
+              onPress={() => generateAffirmation(mood.key)}
+            />
+          ))}
         </View>
 
         {isGenerating && (
           <View style={styles.generatingContainer}>
+            <View style={styles.generatingDotsRow}>
+              {generatingDots.map((dot, i) => (
+                <FloatingDot
+                  key={i}
+                  delay={dot.delay}
+                  x={dot.x - width * 0.15}
+                  color={getMoodData()?.color || '#FFD700'}
+                />
+              ))}
+            </View>
             <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
               <LinearGradient
-                colors={['rgba(167,139,250,0.2)', 'rgba(99,102,241,0.1)']}
+                colors={[`${getMoodData()?.color || '#FFD700'}30`, `${getMoodData()?.color || '#FFD700'}08`]}
                 style={styles.generatingBubble}
               >
-                <Ionicons name="sparkles" size={24} color="#A78BFA" />
+                <Ionicons name="sparkles" size={28} color={getMoodData()?.color || '#FFD700'} />
               </LinearGradient>
             </Animated.View>
-            <Text style={styles.generatingText}>AI генерирует ваш настрой...</Text>
+            <Text style={[styles.generatingText, { color: getMoodData()?.color || '#FFD700' }]}>
+              AI генерирует ваш настрой...
+            </Text>
           </View>
         )}
 
         {affirmation && !isGenerating && (
-          <Animated.View style={[styles.affirmationContainer, { opacity: fadeAnim }]}>
+          <Animated.View style={[styles.affirmationContainer, { opacity: fadeAnim, transform: [{ translateY: cardSlide }] }]}>
             <LinearGradient
               colors={[
-                `${getMoodData()?.color}15`,
-                'rgba(255,255,255,0.03)',
+                `${getMoodData()?.color}12`,
+                'rgba(218,165,32,0.04)',
+                'rgba(255,255,255,0.02)',
               ]}
               style={styles.affirmationCard}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
+              <View style={styles.affirmationGoldTop}>
+                <LinearGradient
+                  colors={['#FFD700', '#DAA520', '#B8860B', 'transparent']}
+                  style={styles.affirmationGoldTopLine}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                />
+              </View>
               <View style={styles.affirmationHeader}>
                 <LinearGradient
                   colors={getMoodData()?.gradient || ['#A78BFA', '#6366F1']}
@@ -152,35 +301,50 @@ export default function AIMoodScreen({ navigation }) {
                 >
                   <Ionicons name="sparkles" size={16} color="#FFF" />
                 </LinearGradient>
-                <Text style={styles.affirmationLabel}>Ваш настрой на сегодня</Text>
+                <View>
+                  <Text style={styles.affirmationLabel}>Ваш настрой на сегодня</Text>
+                  <Text style={styles.affirmationSublabel}>Персональная аффирмация</Text>
+                </View>
               </View>
+
               <View style={styles.quoteLine}>
-                <View
-                  style={[styles.quoteAccent, { backgroundColor: getMoodData()?.color }]}
-                />
+                <View style={styles.quoteAccentContainer}>
+                  <LinearGradient
+                    colors={['#FFD700', getMoodData()?.color || '#DAA520']}
+                    style={styles.quoteAccent}
+                  />
+                </View>
                 <Text style={styles.affirmationText}>{affirmation}</Text>
               </View>
-              <TouchableOpacity
-                style={styles.refreshBtn}
-                onPress={() => generateAffirmation(selectedMood)}
-              >
-                <Ionicons name="refresh-outline" size={16} color="rgba(255,255,255,0.5)" />
-                <Text style={styles.refreshText}>Сгенерировать другой</Text>
-              </TouchableOpacity>
+
+              <View style={styles.cardActions}>
+                <TouchableOpacity
+                  style={styles.refreshBtn}
+                  onPress={() => generateAffirmation(selectedMood)}
+                >
+                  <Ionicons name="refresh-outline" size={16} color="#DAA520" />
+                  <Text style={styles.refreshText}>Другой настрой</Text>
+                </TouchableOpacity>
+              </View>
             </LinearGradient>
           </Animated.View>
         )}
 
         {!selectedMood && !isGenerating && (
           <View style={styles.emptyState}>
-            <View style={styles.emptyIconContainer}>
+            <Animated.View style={[styles.emptyIconContainer, { transform: [{ translateY: orbTY }] }]}>
               <LinearGradient
-                colors={['rgba(167,139,250,0.15)', 'rgba(99,102,241,0.05)']}
+                colors={['rgba(218,165,32,0.12)', 'rgba(218,165,32,0.03)']}
                 style={styles.emptyIcon}
               >
-                <Text style={styles.emptyEmoji}>✨</Text>
+                <LinearGradient
+                  colors={['rgba(218,165,32,0.2)', 'rgba(218,165,32,0.05)']}
+                  style={styles.emptyIconInner}
+                >
+                  <Text style={styles.emptyEmoji}>✨</Text>
+                </LinearGradient>
               </LinearGradient>
-            </View>
+            </Animated.View>
             <Text style={styles.emptyTitle}>Как вы себя чувствуете?</Text>
             <Text style={styles.emptyText}>
               Нажмите на смайлик выше,{'\n'}чтобы получить персональный настрой
@@ -193,8 +357,24 @@ export default function AIMoodScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { flex: 1 },
+  bgOrb1: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(218,165,32,0.03)',
+    top: -50,
+    left: -80,
+  },
+  bgOrb2: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(99,102,241,0.03)',
+    bottom: 100,
+    right: -60,
   },
   scrollContent: {
     paddingHorizontal: 24,
@@ -207,6 +387,15 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderRadius: 20,
     overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#FFD700',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+      },
+      android: { elevation: 4 },
+    }),
   },
   aiBadgeGradient: {
     flexDirection: 'row',
@@ -217,19 +406,28 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   aiBadgeText: {
-    color: '#FFF',
+    color: '#1A1145',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   title: {
     fontSize: 28,
     fontWeight: '800',
     color: '#FFFFFF',
-    marginBottom: 8,
+    marginBottom: 12,
+  },
+  goldDivider: {
+    width: '40%',
+    height: 2,
+    marginBottom: 12,
+  },
+  goldDividerLine: {
+    flex: 1,
+    borderRadius: 1,
   },
   subtitle: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(255,255,255,0.45)',
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -240,19 +438,19 @@ const styles = StyleSheet.create({
     marginBottom: 36,
   },
   moodBtn: {
-    width: 96,
-    height: 110,
+    width: 100,
+    height: 115,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 2,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   moodBtnSelected: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderColor: 'rgba(167,139,250,0.4)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(218,165,32,0.25)',
   },
   moodBtnGradientBorder: {
     position: 'absolute',
@@ -268,24 +466,28 @@ const styles = StyleSheet.create({
   moodLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(255,255,255,0.45)',
   },
   generatingContainer: {
     alignItems: 'center',
     paddingVertical: 40,
   },
+  generatingDotsRow: {
+    width: width * 0.7,
+    height: 70,
+    marginBottom: -20,
+  },
   generatingBubble: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
   generatingText: {
-    color: 'rgba(255,255,255,0.5)',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   affirmationContainer: {
     width: '100%',
@@ -294,34 +496,54 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(218,165,32,0.1)',
+    overflow: 'hidden',
+  },
+  affirmationGoldTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+  },
+  affirmationGoldTopLine: {
+    flex: 1,
   },
   affirmationHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 20,
-    gap: 10,
+    gap: 12,
   },
   affirmationIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   affirmationLabel: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  affirmationSublabel: {
+    color: '#DAA520',
+    fontSize: 11,
     fontWeight: '600',
+    marginTop: 2,
   },
   quoteLine: {
     flexDirection: 'row',
     marginBottom: 20,
   },
+  quoteAccentContainer: {
+    marginRight: 16,
+  },
   quoteAccent: {
     width: 3,
+    flex: 1,
     borderRadius: 2,
-    marginRight: 16,
   },
   affirmationText: {
     fontSize: 17,
@@ -330,19 +552,22 @@ const styles = StyleSheet.create({
     flex: 1,
     fontWeight: '500',
   },
+  cardActions: {
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(218,165,32,0.08)',
+    paddingTop: 14,
+  },
   refreshBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
+    gap: 8,
+    paddingVertical: 6,
   },
   refreshText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
-    fontWeight: '500',
+    color: '#DAA520',
+    fontSize: 14,
+    fontWeight: '600',
   },
   emptyState: {
     alignItems: 'center',
@@ -352,9 +577,16 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   emptyIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyIconInner: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -369,7 +601,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.4)',
+    color: 'rgba(255,255,255,0.35)',
     textAlign: 'center',
     lineHeight: 20,
   },

@@ -24,7 +24,7 @@ function TabIcon({ name, color, focused }) {
             width: 4,
             height: 4,
             borderRadius: 2,
-            backgroundColor: '#A78BFA',
+            backgroundColor: '#FFD700',
             marginTop: 4,
           }}
         />
@@ -39,8 +39,8 @@ function MainTabs() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#0F0A2E',
-          borderTopColor: 'rgba(255,255,255,0.06)',
+          backgroundColor: 'rgba(10,6,24,0.95)',
+          borderTopColor: 'rgba(218,165,32,0.1)',
           borderTopWidth: 1,
           height: Platform.OS === 'ios' ? 88 : 65,
           paddingBottom: Platform.OS === 'ios' ? 28 : 10,
@@ -48,7 +48,7 @@ function MainTabs() {
           position: 'absolute',
           elevation: 0,
         },
-        tabBarActiveTintColor: '#A78BFA',
+        tabBarActiveTintColor: '#FFD700',
         tabBarInactiveTintColor: 'rgba(255,255,255,0.3)',
         tabBarLabelStyle: {
           fontSize: 11,

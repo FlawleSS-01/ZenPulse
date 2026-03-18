@@ -8,6 +8,7 @@ import {
   Dimensions,
   Animated,
   Platform,
+  Easing,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,18 +19,64 @@ import { MEDITATIONS } from '../data/meditations';
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - 24 * 2 - 14) / 2;
 
+function GoldOrbBackground() {
+  const float1 = useRef(new Animated.Value(0)).current;
+  const float2 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(float1, { toValue: 1, duration: 4000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(float1, { toValue: 0, duration: 4000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    ).start();
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(float2, { toValue: 1, duration: 5000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(float2, { toValue: 0, duration: 5000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    ).start();
+  }, []);
+
+  const ty1 = float1.interpolate({ inputRange: [0, 1], outputRange: [0, -20] });
+  const ty2 = float2.interpolate({ inputRange: [0, 1], outputRange: [0, 15] });
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Animated.View style={[styles.orb, styles.orb1, { transform: [{ translateY: ty1 }] }]} />
+      <Animated.View style={[styles.orb, styles.orb2, { transform: [{ translateY: ty2 }] }]} />
+    </View>
+  );
+}
+
 function MeditationCard({ item, index, isSubscribed, onLockedPress }) {
   const isLocked = !item.free && !isSubscribed;
   const scaleAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.spring(scaleAnim, {
       toValue: 1,
-      delay: index * 80,
-      friction: 8,
+      delay: index * 100,
+      friction: 6,
+      tension: 80,
       useNativeDriver: true,
     }).start();
+
+    if (!isLocked) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(glowAnim, { toValue: 1, duration: 2000 + index * 300, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(glowAnim, { toValue: 0, duration: 2000 + index * 300, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        ]),
+      ).start();
+    }
   }, []);
+
+  const borderOpacity = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.06, 0.2],
+  });
 
   return (
     <Animated.View style={[styles.cardWrapper, { transform: [{ scale: scaleAnim }] }]}>
@@ -38,24 +85,35 @@ function MeditationCard({ item, index, isSubscribed, onLockedPress }) {
         activeOpacity={isLocked ? 0.7 : 0.85}
         onPress={isLocked ? onLockedPress : undefined}
       >
+        <Animated.View
+          style={[
+            styles.cardBorderGlow,
+            !isLocked && { borderColor: item.color, opacity: borderOpacity },
+          ]}
+        />
         <LinearGradient
           colors={
             isLocked
-              ? ['rgba(255,255,255,0.04)', 'rgba(255,255,255,0.02)']
-              : [`${item.color}22`, `${item.color}08`]
+              ? ['rgba(255,255,255,0.03)', 'rgba(255,255,255,0.01)']
+              : [`${item.color}20`, `${item.color}05`, 'rgba(15,10,46,0.8)']
           }
           style={styles.cardGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
           <View style={styles.cardTop}>
-            <Text style={[styles.cardEmoji, isLocked && styles.lockedEmoji]}>
-              {item.emoji}
-            </Text>
+            <View style={[styles.emojiContainer, isLocked && styles.emojiContainerLocked]}>
+              <Text style={[styles.cardEmoji, isLocked && styles.lockedEmoji]}>
+                {item.emoji}
+              </Text>
+            </View>
             {isLocked && (
-              <View style={styles.lockBadge}>
-                <Ionicons name="lock-closed" size={12} color="#FFF" />
-              </View>
+              <LinearGradient
+                colors={['rgba(218,165,32,0.3)', 'rgba(184,134,11,0.15)']}
+                style={styles.lockBadge}
+              >
+                <Ionicons name="lock-closed" size={11} color="#FFD700" />
+              </LinearGradient>
             )}
           </View>
 
@@ -78,13 +136,16 @@ function MeditationCard({ item, index, isSubscribed, onLockedPress }) {
               <Ionicons
                 name="time-outline"
                 size={12}
-                color={isLocked ? 'rgba(255,255,255,0.3)' : item.color}
+                color={isLocked ? 'rgba(255,255,255,0.25)' : item.color}
               />
               <Text style={[styles.durationText, isLocked ? styles.lockedText : { color: item.color }]}>
                 {item.duration}
               </Text>
             </View>
-            <Text style={[styles.categoryText, isLocked && styles.lockedText]}>
+            <Text
+              style={[styles.categoryText, isLocked && styles.lockedText]}
+              numberOfLines={1}
+            >
               {item.category}
             </Text>
           </View>
@@ -97,31 +158,51 @@ function MeditationCard({ item, index, isSubscribed, onLockedPress }) {
 export default function MeditationsScreen({ navigation }) {
   const { isSubscribed } = useSubscription();
   const insets = useSafeAreaInsets();
+  const titleFade = useRef(new Animated.Value(0)).current;
+  const titleSlide = useRef(new Animated.Value(-20)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(titleFade, { toValue: 1, duration: 700, useNativeDriver: true }),
+      Animated.timing(titleSlide, { toValue: 0, duration: 600, easing: Easing.out(Easing.back(1.5)), useNativeDriver: true }),
+    ]).start();
+  }, []);
 
   const handleLockedPress = () => {
     navigation.navigate('Paywall');
   };
 
   const renderHeader = () => (
-    <View style={styles.headerContainer}>
+    <Animated.View style={[styles.headerContainer, { opacity: titleFade, transform: [{ translateX: titleSlide }] }]}>
       <View>
         <Text style={styles.greeting}>Добрый день 🙏</Text>
-        <Text style={styles.headerTitle}>Медитации</Text>
+        <View style={styles.headerTitleRow}>
+          <Text style={styles.headerTitle}>Медитации</Text>
+          <Text style={styles.headerStar}> ✦</Text>
+        </View>
+        <View style={styles.goldAccent}>
+          <LinearGradient
+            colors={['#FFD700', '#DAA520', 'transparent']}
+            style={styles.goldAccentLine}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+          />
+        </View>
       </View>
       {!isSubscribed && (
         <TouchableOpacity style={styles.premiumBtn} onPress={handleLockedPress}>
           <LinearGradient
-            colors={['#A78BFA', '#6366F1']}
+            colors={['#FFD700', '#DAA520', '#B8860B']}
             style={styles.premiumBtnGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
           >
-            <Ionicons name="diamond-outline" size={14} color="#FFF" />
+            <Ionicons name="diamond" size={13} color="#1A1145" />
             <Text style={styles.premiumBtnText}>Premium</Text>
           </LinearGradient>
         </TouchableOpacity>
       )}
-    </View>
+    </Animated.View>
   );
 
   const renderItem = ({ item, index }) => (
@@ -134,7 +215,8 @@ export default function MeditationsScreen({ navigation }) {
   );
 
   return (
-    <LinearGradient colors={['#0F0A2E', '#1A1145', '#0F0A2E']} style={styles.container}>
+    <LinearGradient colors={['#0A0618', '#120D30', '#0F0A2E']} style={styles.container}>
+      <GoldOrbBackground />
       <FlatList
         data={MEDITATIONS}
         renderItem={renderItem}
@@ -153,8 +235,24 @@ export default function MeditationsScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { flex: 1 },
+  orb: {
+    position: 'absolute',
+    borderRadius: 999,
+  },
+  orb1: {
+    width: 200,
+    height: 200,
+    top: -40,
+    right: -60,
+    backgroundColor: 'rgba(218,165,32,0.04)',
+  },
+  orb2: {
+    width: 160,
+    height: 160,
+    bottom: 120,
+    left: -50,
+    backgroundColor: 'rgba(99,102,241,0.04)',
   },
   listContent: {
     paddingHorizontal: 24,
@@ -171,17 +269,43 @@ const styles = StyleSheet.create({
   },
   greeting: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(255,255,255,0.45)',
     marginBottom: 4,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 28,
     fontWeight: '800',
     color: '#FFFFFF',
   },
+  headerStar: {
+    fontSize: 18,
+    color: '#FFD700',
+  },
+  goldAccent: {
+    width: 50,
+    height: 2,
+    marginTop: 8,
+  },
+  goldAccentLine: {
+    flex: 1,
+    borderRadius: 1,
+  },
   premiumBtn: {
     borderRadius: 20,
     overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#FFD700',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: { elevation: 6 },
+    }),
   },
   premiumBtnGradient: {
     flexDirection: 'row',
@@ -192,9 +316,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   premiumBtnText: {
-    color: '#FFF',
+    color: '#1A1145',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   cardWrapper: {
     flex: 1,
@@ -203,12 +327,17 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 20,
     overflow: 'hidden',
+  },
+  cardBorderGlow: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
+    zIndex: 1,
   },
   cardGradient: {
     padding: 16,
-    minHeight: 180,
+    minHeight: 190,
     justifyContent: 'space-between',
   },
   cardTop: {
@@ -217,17 +346,27 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 12,
   },
+  emojiContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emojiContainerLocked: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
   cardEmoji: {
-    fontSize: 32,
+    fontSize: 26,
   },
   lockedEmoji: {
-    opacity: 0.3,
+    opacity: 0.25,
   },
   lockBadge: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -240,12 +379,12 @@ const styles = StyleSheet.create({
   },
   cardDesc: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(255,255,255,0.45)',
     lineHeight: 16,
     marginBottom: 12,
   },
   lockedText: {
-    color: 'rgba(255,255,255,0.25)',
+    color: 'rgba(255,255,255,0.2)',
   },
   cardFooter: {
     flexDirection: 'row',
@@ -260,9 +399,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+    flexShrink: 0,
   },
   lockedBadge: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,255,255,0.02)',
   },
   durationText: {
     fontSize: 11,
@@ -270,7 +410,8 @@ const styles = StyleSheet.create({
   },
   categoryText: {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.4)',
+    color: 'rgba(255,255,255,0.35)',
     fontWeight: '500',
+    flexShrink: 1,
   },
 });
